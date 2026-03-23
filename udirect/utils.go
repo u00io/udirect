@@ -23,6 +23,25 @@ func GeneratePrivateKey() ([]byte, error) {
 	return []byte(priv), nil
 }
 
+func GenerateCurve25519KeyPair() ([]byte, []byte, error) {
+	priv := make([]byte, 32)
+	_, err := rand.Read(priv)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	priv[0] &= 248
+	priv[31] &= 127
+	priv[31] |= 64
+
+	pub, err := curve25519.X25519(priv, curve25519.Basepoint)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return priv, pub, nil
+}
+
 func getPublicKey(privateKey []byte) []byte {
 	return []byte(ed25519.PrivateKey(privateKey).Public().(ed25519.PublicKey))
 }
@@ -74,4 +93,16 @@ func decryptAESGCM(encryptedMessage []byte, key []byte) (decryptedMessage []byte
 		return nil, err
 	}
 	return
+}
+
+func equalBytes(a []byte, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

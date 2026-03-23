@@ -8,7 +8,7 @@ import (
 	"github.com/u00io/udirect/udirect"
 )
 
-var dataToSend = make([]byte, 10*1024*1024)
+var dataToSend = make([]byte, 10*1024)
 
 type Stat struct {
 	TotalReceived int64

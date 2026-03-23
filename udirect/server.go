@@ -1,16 +1,22 @@
 package udirect
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
+	"fmt"
 	"sync"
 
 	"github.com/u00io/udirect/tcpconn"
 )
 
 type Server struct {
-	mtx        sync.Mutex
-	port       int
-	tcpServer  *tcpconn.Server
-	privateKey []byte // Ed25519 private key
+	mtx       sync.Mutex
+	port      int
+	tcpServer *tcpconn.Server
+
+	privateKeyHex string
+	privateKey    []byte // Ed25519 private key
+	publicKey     []byte // Ed25519 public key
 
 	clients map[int64]*Client
 
@@ -21,8 +27,8 @@ type Server struct {
 
 func NewServer() *Server {
 	var c Server
-	c.privateKey, _ = GeneratePrivateKey()
 	c.clients = make(map[int64]*Client)
+	c.GenerateLocalPrivateKey()
 	return &c
 }
 
@@ -39,8 +45,32 @@ func (c *Server) Stop() error {
 	return c.tcpServer.Stop()
 }
 
+func (c *Server) GenerateLocalPrivateKey() error {
+	privateKey, err := GeneratePrivateKey()
+	if err != nil {
+		return err
+	}
+	privateKeyHex := hex.EncodeToString(privateKey)
+	c.SetLocalPrivateKey(privateKeyHex)
+	return nil
+}
+
+func (c *Server) SetLocalPrivateKey(privateKeyHex string) error {
+	privateKey, err := hex.DecodeString(privateKeyHex)
+	if err != nil || len(privateKey) != ed25519.PrivateKeySize {
+		return fmt.Errorf("invalid private key hex string")
+	}
+	c.mtx.Lock()
+	c.privateKeyHex = privateKeyHex
+	c.privateKey = privateKey
+	c.publicKey = ed25519.PublicKey(privateKey[32:])
+	c.mtx.Unlock()
+	return nil
+}
+
 func (c *Server) onTcpConnected(client *tcpconn.Client) {
-	udirectClient := newClientFromTcpClient(client, c.privateKey, c.OnClientConnected, c.OnClientFrameReceived, c.OnClientDisconnected)
+	udirectClient := newClientFromTcpClient(client, c.OnClientConnected, c.OnClientFrameReceived, c.OnClientDisconnected)
+	udirectClient.SetLocalPrivateKey(c.privateKeyHex)
 	c.mtx.Lock()
 	c.clients[client.ID()] = udirectClient
 	c.mtx.Unlock()

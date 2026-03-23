@@ -8,7 +8,7 @@ import (
 )
 
 func runClient() {
-	client := udirect.NewClient("127.0.0.1", "", 13245)
+	client := udirect.NewClient("127.0.0.1", 13245)
 	client.OnConnected = func(client *udirect.Client) {
 		println("Connected to server")
 	}

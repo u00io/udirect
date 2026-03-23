@@ -6,19 +6,14 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/u00io/udirect/tcpconn"
 )
 
-// Client represents a client connection to the server.
-// Like TLS connection uses encryption, but Ed25519 is used for authentication and key exchange.
-// AES-256-GCM is used for encryption and decryption.
-// The client can connect to the server and send data to the server, and receive data from the server.
-// The client can also disconnect from the server.
-// The client can be configured to automatically reconnect to the server if the connection is lost.
-// Based on ./tcpconn package
-
 type Client struct {
+	mtx                      sync.Mutex
 	tcpClient                *tcpconn.Client
 	addr                     string
 	port                     int
@@ -38,39 +33,67 @@ type Client struct {
 
 	inputData []byte // buffer for incoming data
 
+	stats ClientStats
+
 	OnConnected     func(client *Client)              // callback for connection established
 	OnFrameReceived func(client *Client, data []byte) // callback for received data
 	OnDisconnected  func(client *Client)              // callback for connection closed
 }
 
-func NewClient(privateKeyHex string, addr string, port int) *Client {
+type ClientStats struct {
+	BytesSent     int64
+	BytesReceived int64
+}
+
+func NewClient(addr string, port int) *Client {
 	var c Client
-	privateKey, err := hex.DecodeString(privateKeyHex)
-	if err != nil || len(privateKey) != ed25519.PrivateKeySize {
-		privateKey, _ = GeneratePrivateKey()
-	}
 	c.addr = addr
 	c.port = port
 	c.maxInputBufferSize = 1024 * 1024 // 1MB
-	c.privateKey = privateKey
-	c.publicKey = ed25519.PublicKey(privateKey[32:])
+	c.GenerateLocalPrivateKey()
 	c.tcpClient = tcpconn.NewClient()
 	c.tcpClient.OnConnected = c.onTcpClientConnected
 	c.tcpClient.OnDisconnected = c.onTcpClientDisconnected
 	c.tcpClient.OnReceived = c.onTcpClientReceived
+	c.currentLocalNonce = make([]byte, 8)
+	rand.Read(c.currentLocalNonce)
 	return &c
 }
 
-func newClientFromTcpClient(tcpClient *tcpconn.Client, privateKey []byte, onConnected func(*Client), onFrameReceived func(*Client, []byte), onDisconnected func(*Client)) *Client {
+func newClientFromTcpClient(tcpClient *tcpconn.Client, onConnected func(*Client), onFrameReceived func(*Client, []byte), onDisconnected func(*Client)) *Client {
 	var c Client
-	c.privateKey = privateKey
-	c.publicKey = ed25519.PublicKey(privateKey[32:])
 	c.tcpClient = tcpClient
 	c.maxInputBufferSize = 1024 * 1024 // 1MB
 	c.OnConnected = onConnected
 	c.OnFrameReceived = onFrameReceived
 	c.OnDisconnected = onDisconnected
+	c.currentLocalNonce = make([]byte, 8)
+	rand.Read(c.currentLocalNonce)
 	return &c
+}
+
+func (c *Client) GenerateLocalPrivateKey() error {
+	privateKey, err := GeneratePrivateKey()
+	if err != nil {
+		return err
+	}
+	c.mtx.Lock()
+	c.privateKey = privateKey
+	c.publicKey = ed25519.PublicKey(privateKey[32:])
+	c.mtx.Unlock()
+	return nil
+}
+
+func (c *Client) SetLocalPrivateKey(privateKeyHex string) error {
+	privateKey, err := hex.DecodeString(privateKeyHex)
+	if err != nil || len(privateKey) != ed25519.PrivateKeySize {
+		return fmt.Errorf("invalid private key hex string")
+	}
+	c.mtx.Lock()
+	c.privateKey = privateKey
+	c.publicKey = ed25519.PublicKey(privateKey[32:])
+	c.mtx.Unlock()
+	return nil
 }
 
 func (c *Client) Start() {
@@ -82,15 +105,12 @@ func (c *Client) ID() int64 {
 }
 
 func (c *Client) onTcpClientConnected(client *tcpconn.Client) {
-	fmt.Println("Client::onTcpClientConnected")
-	// send handshake:
-	// 0. public key of the client [32 bytes]
-	// 1. transport public key and it is nonce as well [32 bytes]
-	// 2. signature of the transport public key [64 bytes]
-	// Total 96 bytes
 	var err error
+
+	c.mtx.Lock()
 	c.transportPrivateKey, c.transportPublicKey, err = GenerateCurve25519KeyPair()
 	if err != nil {
+		c.mtx.Unlock()
 		return
 	}
 	payload := make([]byte, 128)
@@ -99,62 +119,142 @@ func (c *Client) onTcpClientConnected(client *tcpconn.Client) {
 	signature := ed25519.Sign(ed25519.PrivateKey(c.privateKey), c.transportPublicKey)
 	copy(payload[64:64+64], signature) // 64 bytes
 	handShakeFrame := newFrame(0, payload)
-	err = c.tcpClient.Send(handShakeFrame.toBytes())
+	c.mtx.Unlock()
+
+	err = client.Send(handShakeFrame.toBytes())
 	if err != nil {
 		return
 	}
 }
 
 func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
-	fmt.Println("Client::onTcpClientDisconnected")
+	c.mtx.Lock()
 	c.aesKey = nil
 	c.transportPrivateKey = nil
 	c.transportPublicKey = nil
-
-	if c.OnDisconnected != nil {
-		c.OnDisconnected(c)
+	c.remotePublicKey = nil
+	c.transportRemotePublicKey = nil
+	c.inputData = nil
+	onDisconnected := c.OnDisconnected
+	c.mtx.Unlock()
+	if onDisconnected != nil {
+		onDisconnected(c)
 	}
 }
 
 func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
-	fmt.Println("Client::onTcpClientReceived, data length:", len(data))
+	c.mtx.Lock()
 	if len(c.inputData)+len(data) > c.maxInputBufferSize {
-		// drop the data if the input buffer is full
+		c.mtx.Unlock()
+		client.Stop()
 		return
 	}
 	c.inputData = append(c.inputData, data...)
 	if len(c.inputData) < 4 {
+		c.mtx.Unlock()
 		return
 	}
+
+	minFrameLength := uint32(16)
+	maxFrameLength := uint32(c.maxInputBufferSize)
 	frameLength := binary.LittleEndian.Uint32(c.inputData[0:4])
-	for len(c.inputData) >= int(frameLength) {
+	if frameLength > maxFrameLength {
+		c.mtx.Unlock()
+		client.Stop()
+		return
+	}
+	if frameLength < minFrameLength {
+		c.mtx.Unlock()
+		client.Stop()
+		return
+	}
+
+	receivedFrames := make([]*frame, 0)
+	inputData := c.inputData
+	for {
+		if len(inputData) < 4 {
+			break
+		}
+		frameLength = binary.LittleEndian.Uint32(inputData[0:4])
+		if frameLength > maxFrameLength {
+			c.mtx.Unlock()
+			client.Stop()
+			return
+		}
+		if frameLength < minFrameLength {
+			c.mtx.Unlock()
+			client.Stop()
+			return
+		}
+		if uint32(len(inputData)) < frameLength {
+			break
+		}
+
 		frameData := make([]byte, frameLength)
-		copy(frameData, c.inputData[0:frameLength])
-		c.inputData = c.inputData[frameLength:]
+		copy(frameData, inputData[0:frameLength])
+		inputData = inputData[frameLength:]
 		frame, err := frameFromBytes(frameData)
 		if err != nil {
 			continue
 		}
+		receivedFrames = append(receivedFrames, frame)
+	}
+	if len(inputData) == 0 {
+		c.inputData = nil
+	} else {
+		c.inputData = make([]byte, len(inputData))
+		copy(c.inputData, inputData)
+	}
+	c.mtx.Unlock()
+
+	for _, frame := range receivedFrames {
 		switch frame.Type {
-		case 0: // handshake response
+		case 0: // handshake
 			if len(frame.Payload) == 128 {
-				c.remotePublicKey = frame.Payload[0:32]
-				c.transportRemotePublicKey = frame.Payload[32:64]
-				signature := frame.Payload[64:128]
-				if !ed25519.Verify(ed25519.PublicKey(c.remotePublicKey), c.transportRemotePublicKey, signature) {
+				c.mtx.Lock()
+				if c.aesKey != nil {
+					c.mtx.Unlock()
 					continue
 				}
-				c.aesKey, err = deriveAESKey(c.transportPrivateKey, c.transportRemotePublicKey)
+				c.mtx.Unlock()
+
+				remotePublicKey := frame.Payload[0:32]
+				transportRemotePublicKey := frame.Payload[32:64]
+				signature := frame.Payload[64:128]
+				if !ed25519.Verify(ed25519.PublicKey(remotePublicKey), transportRemotePublicKey, signature) {
+					continue
+				}
+				c.mtx.Lock()
+				c.remotePublicKey = remotePublicKey
+				c.transportRemotePublicKey = transportRemotePublicKey
+				c.mtx.Unlock()
+				aesKey, err := deriveAESKey(c.transportPrivateKey, c.transportRemotePublicKey)
 				if err != nil {
 					continue
 				}
+				c.mtx.Lock()
+				c.aesKey = aesKey
+				onConnected := c.OnConnected
+				c.mtx.Unlock()
 				fmt.Println("Handshake successful, AES key derived:", hex.EncodeToString(c.aesKey))
-				if c.OnConnected != nil {
-					c.OnConnected(c)
+				if onConnected != nil {
+					onConnected(c)
 				}
 			}
 		case 1: // encrypted data
-			decryptedData, err := decryptAESGCM(frame.Payload, c.aesKey)
+			c.mtx.Lock()
+			aesKey := make([]byte, len(c.aesKey))
+			copy(aesKey, c.aesKey)
+			expectedRemoteNonce := make([]byte, len(c.expectedRemoteNonce))
+			copy(expectedRemoteNonce, c.expectedRemoteNonce)
+			onFrameReceived := c.OnFrameReceived
+			c.mtx.Unlock()
+
+			if len(aesKey) != 32 {
+				continue
+			}
+
+			decryptedData, err := decryptAESGCM(frame.Payload, aesKey)
 			if err != nil {
 				continue
 			}
@@ -163,16 +263,22 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 				nonce := decryptedData[0:8]
 				nextNonce := decryptedData[8:16]
 				data := decryptedData[16:]
-				if len(c.expectedRemoteNonce) > 0 {
-					if !equalBytes(nonce, c.expectedRemoteNonce) {
+				if len(expectedRemoteNonce) > 0 {
+					if !equalBytes(nonce, expectedRemoteNonce) {
+						client.Stop()
 						continue
 					}
-				} else {
+					c.mtx.Lock()
 					c.expectedRemoteNonce = nextNonce
+					c.mtx.Unlock()
+				} else {
+					c.mtx.Lock()
+					c.expectedRemoteNonce = nextNonce
+					c.mtx.Unlock()
 				}
 
-				if c.OnFrameReceived != nil {
-					c.OnFrameReceived(c, data)
+				if onFrameReceived != nil {
+					onFrameReceived(c, data)
 				}
 			}
 		}
@@ -181,22 +287,44 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 
 func (c *Client) Send(data []byte) error {
 	// Payload format:
-	// 0. nonce [32 bytes]
-	// 1. next nonce [32 bytes]
+	// 0. nonce [8 bytes]
+	// 1. next nonce [8 bytes]
 	// 2. data [N bytes]
-	if len(c.aesKey) == 0 {
-		return fmt.Errorf("AES key is not derived yet")
+
+	// getting AES key and current nonce with lock
+	aesKey := make([]byte, 0)
+	// Wait until AES key is derived
+	for i := 0; i < 10; i++ {
+		c.mtx.Lock()
+		if len(c.aesKey) == 32 {
+			aesKey = make([]byte, len(c.aesKey))
+			copy(aesKey, c.aesKey)
+			c.mtx.Unlock()
+			break
+		}
+		c.mtx.Unlock()
+		if len(aesKey) == 32 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
-	payloadRaw := make([]byte, 32+len(data))
+	if len(aesKey) == 0 {
+		return fmt.Errorf("AES key not derived yet")
+	}
+
+	payloadRaw := make([]byte, 8+8+len(data))
+	c.mtx.Lock()
 	copy(payloadRaw[0:8], c.currentLocalNonce) // current nonce
 	// fill c.currentLocalNonce with random bytes for next use
 	_, err := rand.Read(c.currentLocalNonce)
 	if err != nil {
+		c.mtx.Unlock()
 		return err
 	}
 	copy(payloadRaw[8:16], c.currentLocalNonce) // next nonce
+	c.mtx.Unlock()
 	copy(payloadRaw[16:], data)
-	encryptedPayload, err := encryptAESGCM(payloadRaw, c.aesKey)
+	encryptedPayload, err := encryptAESGCM(payloadRaw, aesKey)
 	if err != nil {
 		return err
 	}

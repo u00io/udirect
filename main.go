@@ -1,7 +1,9 @@
 package main
 
-import example00tcpconn "github.com/u00io/udirect/examples/example_00_tcpconn"
+import (
+	example01udirect "github.com/u00io/udirect/examples/example_01_udirect"
+)
 
 func main() {
-	example00tcpconn.Run()
+	example01udirect.Run()
 }

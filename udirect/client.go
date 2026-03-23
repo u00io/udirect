@@ -45,11 +45,15 @@ type ClientStats struct {
 	BytesReceived int64
 }
 
+const (
+	defaultMaxInputBufferSize = 10 * 1024 * 1024 // 1MB
+)
+
 func NewClient(addr string, port int) *Client {
 	var c Client
 	c.addr = addr
 	c.port = port
-	c.maxInputBufferSize = 1024 * 1024 // 1MB
+	c.maxInputBufferSize = defaultMaxInputBufferSize
 	c.GenerateLocalPrivateKey()
 	c.tcpClient = tcpconn.NewClient()
 	c.tcpClient.OnConnected = c.onTcpClientConnected
@@ -63,7 +67,7 @@ func NewClient(addr string, port int) *Client {
 func newClientFromTcpClient(tcpClient *tcpconn.Client, onConnected func(*Client), onFrameReceived func(*Client, []byte), onDisconnected func(*Client)) *Client {
 	var c Client
 	c.tcpClient = tcpClient
-	c.maxInputBufferSize = 1024 * 1024 // 1MB
+	c.maxInputBufferSize = defaultMaxInputBufferSize
 	c.OnConnected = onConnected
 	c.OnFrameReceived = onFrameReceived
 	c.OnDisconnected = onDisconnected
@@ -94,6 +98,12 @@ func (c *Client) SetLocalPrivateKey(privateKeyHex string) error {
 	c.publicKey = ed25519.PublicKey(privateKey[32:])
 	c.mtx.Unlock()
 	return nil
+}
+
+func (c *Client) SetMaxInputBufferSize(size int) {
+	c.mtx.Lock()
+	c.maxInputBufferSize = size
+	c.mtx.Unlock()
 }
 
 func (c *Client) Start() {

@@ -14,6 +14,8 @@ type Server struct {
 	port      int
 	tcpServer *tcpconn.Server
 
+	maxInputBufferSize int
+
 	privateKeyHex string
 	privateKey    []byte // Ed25519 private key
 	publicKey     []byte // Ed25519 public key
@@ -28,6 +30,7 @@ type Server struct {
 func NewServer() *Server {
 	var c Server
 	c.clients = make(map[int64]*Client)
+	c.maxInputBufferSize = defaultMaxInputBufferSize
 	c.GenerateLocalPrivateKey()
 	return &c
 }
@@ -43,6 +46,12 @@ func (c *Server) Start(port int) error {
 
 func (c *Server) Stop() error {
 	return c.tcpServer.Stop()
+}
+
+func (c *Server) SetMaxInputBufferSize(size int) {
+	c.mtx.Lock()
+	c.maxInputBufferSize = size
+	c.mtx.Unlock()
 }
 
 func (c *Server) GenerateLocalPrivateKey() error {
@@ -71,6 +80,7 @@ func (c *Server) SetLocalPrivateKey(privateKeyHex string) error {
 func (c *Server) onTcpConnected(client *tcpconn.Client) {
 	udirectClient := newClientFromTcpClient(client, c.OnClientConnected, c.OnClientFrameReceived, c.OnClientDisconnected)
 	udirectClient.SetLocalPrivateKey(c.privateKeyHex)
+	udirectClient.SetMaxInputBufferSize(c.maxInputBufferSize)
 	c.mtx.Lock()
 	c.clients[client.ID()] = udirectClient
 	c.mtx.Unlock()

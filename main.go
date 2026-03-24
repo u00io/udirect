@@ -4,13 +4,15 @@ import (
 	"fmt"
 	"os"
 
-	example02u00test "github.com/u00io/udirect/examples/example_02_u00_test"
+	example03uapi "github.com/u00io/udirect/examples/example_03_uapi"
 )
 
 func main() {
+	example03uapi.Run(true, "127.0.0.1")
+
 	// args: --server or --client:x.x.x.x
 	if len(os.Args) > 1 && os.Args[1] == "--server" {
-		example02u00test.Run(true, "")
+		example03uapi.Run(true, "")
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--client" {
@@ -19,7 +21,7 @@ func main() {
 			return
 		}
 
-		example02u00test.Run(false, os.Args[2])
+		example03uapi.Run(false, os.Args[2])
 		return
 	}
 	fmt.Println("Usage: udirect --server|--client x.x.x.x")

@@ -1,6 +1,8 @@
 package uapi
 
 import (
+	"sync"
+
 	"github.com/u00io/udirect/forms"
 	"github.com/u00io/udirect/udirect"
 )
@@ -11,6 +13,7 @@ type IProcessor interface {
 
 type Server struct {
 	udirectServer *udirect.Server
+	mtx           sync.RWMutex
 	processor     IProcessor
 }
 
@@ -22,7 +25,9 @@ func NewServer() *Server {
 }
 
 func (c *Server) SetProcessor(processor IProcessor) {
+	c.mtx.Lock()
 	c.processor = processor
+	c.mtx.Unlock()
 }
 
 func (c *Server) Start(port int) error {
@@ -48,14 +53,25 @@ func (c *Server) thProcessFrame(client *udirect.Client, frameData []byte) {
 	if err != nil {
 		return
 	}
+
+	c.mtx.RLock()
+	processor := c.processor
+	c.mtx.RUnlock()
+	if processor == nil {
+		return
+	}
+
 	trId := form.GetFieldString("_TRID")
 	function := form.GetFieldString("_FN")
-	responseForm, err := c.processor.Process(form)
+	responseForm, err := processor.Process(form)
 	if err != nil {
 		return
+	}
+	if responseForm == nil {
+		responseForm = forms.NewForm()
 	}
 	responseForm.SetFieldString("_TRID", trId)
 	responseForm.SetFieldString("_FN", function)
 	responseFrameData := responseForm.Serialize()
-	client.Send(responseFrameData)
+	_ = client.Send(responseFrameData)
 }

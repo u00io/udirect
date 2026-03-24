@@ -8,7 +8,7 @@ func ParseForm(bs []byte) (*Form, error) {
 	offset := 0
 	for offset < len(bs) {
 		var name string
-		var value string
+		var value []byte
 		name, offset, err = ParseString(bs, offset)
 		if err != nil {
 			return nil, err
@@ -20,7 +20,7 @@ func ParseForm(bs []byte) (*Form, error) {
 		tp := bs[offset]
 		c.Types[name] = tp
 		offset++
-		value, offset, err = ParseString(bs, offset)
+		value, offset, err = ParseBytes(bs, offset)
 		if err != nil {
 			return nil, err
 		}

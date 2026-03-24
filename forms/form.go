@@ -245,7 +245,14 @@ func (c *Form) GetFieldDouble(name string) float64 {
 }
 
 func (c *Form) Serialize() []byte {
-	bs := make([]byte, 0)
+	totalSize := 0
+	for key, value := range c.Items {
+		totalSize += 4 + len(key)
+		totalSize += 1
+		totalSize += 4 + len(value)
+	}
+
+	bs := make([]byte, 0, totalSize)
 	for key, value := range c.Items {
 		bs = append(bs, SerializeString(key)...)
 
@@ -257,7 +264,7 @@ func (c *Form) Serialize() []byte {
 		}
 
 		bs = append(bs, tp)
-		bs = append(bs, SerializeString(string(value))...)
+		bs = append(bs, SerializeBytes(value)...)
 	}
 	return bs
 }

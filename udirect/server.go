@@ -88,18 +88,24 @@ func (c *Server) onTcpConnected(client *tcpconn.Client) {
 }
 
 func (c *Server) onTcpReceived(client *tcpconn.Client, data []byte) {
+	c.mtx.Lock()
 	udirectClient, ok := c.clients[client.ID()]
+	c.mtx.Unlock()
 	if ok && udirectClient != nil {
 		udirectClient.onTcpClientReceived(client, data)
 	}
 }
 
 func (c *Server) onTcpDisconnected(client *tcpconn.Client) {
+	c.mtx.Lock()
 	udirectClient, ok := c.clients[client.ID()]
+	c.mtx.Unlock()
 	if ok && udirectClient != nil {
 		udirectClient.onTcpClientDisconnected(client)
 	}
+	c.mtx.Lock()
 	delete(c.clients, client.ID())
+	c.mtx.Unlock()
 }
 
 func (c *Server) OnClientConnected(client *Client) {

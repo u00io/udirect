@@ -110,6 +110,10 @@ func (c *Client) Start() {
 	c.tcpClient.Start(c.addr, c.port)
 }
 
+func (c *Client) Stop() {
+	c.tcpClient.Stop()
+}
+
 func (c *Client) ID() int64 {
 	return c.tcpClient.ID()
 }

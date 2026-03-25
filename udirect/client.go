@@ -31,7 +31,8 @@ type Client struct {
 
 	aesKey []byte // AES-256-GCM key derived from the shared secret
 
-	inputData []byte // buffer for incoming data
+	inputData       []byte // buffer for incoming data
+	inputDataOffset int    // offset for the input data buffer
 
 	stats ClientStats
 
@@ -58,6 +59,8 @@ func NewClient(addr string, port int) *Client {
 	c.tcpClient = tcpconn.NewClient(c.onTcpClientConnected, c.onTcpClientReceived, c.onTcpClientDisconnected)
 	c.currentLocalNonce = make([]byte, 8)
 	rand.Read(c.currentLocalNonce)
+	c.inputData = make([]byte, defaultMaxInputBufferSize)
+	c.inputDataOffset = 0
 	return &c
 }
 
@@ -70,6 +73,8 @@ func newClientFromTcpClient(tcpClient *tcpconn.Client, onConnected func(*Client)
 	c.OnDisconnected = onDisconnected
 	c.currentLocalNonce = make([]byte, 8)
 	rand.Read(c.currentLocalNonce)
+	c.inputData = make([]byte, defaultMaxInputBufferSize)
+	c.inputDataOffset = 0
 	return &c
 }
 
@@ -145,7 +150,7 @@ func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
 	c.transportPublicKey = nil
 	c.remotePublicKey = nil
 	c.transportRemotePublicKey = nil
-	c.inputData = nil
+	c.inputDataOffset = 0
 	onDisconnected := c.OnDisconnected
 	c.mtx.Unlock()
 	if onDisconnected != nil {
@@ -155,13 +160,14 @@ func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
 
 func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 	c.mtx.Lock()
-	if len(c.inputData)+len(data) > c.maxInputBufferSize {
+	if c.inputDataOffset+len(data) > c.maxInputBufferSize {
 		c.mtx.Unlock()
 		client.Stop()
 		return
 	}
-	c.inputData = append(c.inputData, data...)
-	if len(c.inputData) < 4 {
+	copy(c.inputData[c.inputDataOffset:], data)
+	c.inputDataOffset += len(data)
+	if c.inputDataOffset < 4 {
 		c.mtx.Unlock()
 		return
 	}
@@ -181,12 +187,12 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 	}
 
 	receivedFrames := make([]*frame, 0)
-	inputData := c.inputData
+	offset := 0
 	for {
-		if len(inputData) < 4 {
+		if c.inputDataOffset-offset < 4 {
 			break
 		}
-		frameLength = binary.LittleEndian.Uint32(inputData[0:4])
+		frameLength = binary.LittleEndian.Uint32(c.inputData[offset : offset+4])
 		if frameLength > maxFrameLength {
 			c.mtx.Unlock()
 			client.Stop()
@@ -197,25 +203,23 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 			client.Stop()
 			return
 		}
-		if uint32(len(inputData)) < frameLength {
+		if uint32(c.inputDataOffset) < frameLength {
 			break
 		}
 
 		frameData := make([]byte, frameLength)
-		copy(frameData, inputData[0:frameLength])
-		inputData = inputData[frameLength:]
+		copy(frameData, c.inputData[offset:offset+int(frameLength)])
+		offset += int(frameLength)
 		frame, err := frameFromBytes(frameData)
 		if err != nil {
 			continue
 		}
 		receivedFrames = append(receivedFrames, frame)
 	}
-	if len(inputData) == 0 {
-		c.inputData = nil
-	} else {
-		c.inputData = make([]byte, len(inputData))
-		copy(c.inputData, inputData)
+	if offset < c.inputDataOffset {
+		copy(c.inputData[0:], c.inputData[offset:c.inputDataOffset])
 	}
+	c.inputDataOffset -= offset
 	c.mtx.Unlock()
 
 	for _, frame := range receivedFrames {

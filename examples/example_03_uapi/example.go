@@ -63,7 +63,7 @@ func runServer() {
 
 func Run(server bool, addr string) {
 	go runServer()
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 32; i++ {
 		go runClient(addr)
 	}
 

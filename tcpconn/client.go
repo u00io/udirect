@@ -22,9 +22,9 @@ type Client struct {
 	started  bool
 	stopping bool
 
-	OnConnected    func(client *Client)
-	OnReceived     func(client *Client, data []byte)
-	OnDisconnected func(client *Client)
+	onConnected    func(client *Client)
+	onReceived     func(client *Client, data []byte)
+	onDisconnected func(client *Client)
 
 	onConnectedCalled   bool
 	isDialing           bool
@@ -36,10 +36,22 @@ var (
 	ErrorSendFailed   = errors.New("failed to send data")
 )
 
-func NewClient() *Client {
+func NewClient(onConnected func(*Client), onReceived func(*Client, []byte), onDisconnected func(*Client)) *Client {
 	var c Client
 	c.id = getNextClientID()
 	c.bufferSize = 64 * 1024
+	c.onConnected = onConnected
+	c.onReceived = onReceived
+	c.onDisconnected = onDisconnected
+	if c.onConnected == nil {
+		c.onConnected = func(*Client) {}
+	}
+	if c.onReceived == nil {
+		c.onReceived = func(*Client, []byte) {}
+	}
+	if c.onDisconnected == nil {
+		c.onDisconnected = func(*Client) {}
+	}
 	return &c
 }
 
@@ -50,9 +62,20 @@ func newConnectedClient(conn *net.TCPConn, onConnected func(*Client), onReceived
 	c.host = conn.RemoteAddr().(*net.TCPAddr).IP.String()
 	c.port = conn.RemoteAddr().(*net.TCPAddr).Port
 	c.autoreconnect = false
-	c.OnConnected = onConnected
-	c.OnReceived = onReceived
-	c.OnDisconnected = onDisconnected
+
+	c.onConnected = onConnected
+	c.onReceived = onReceived
+	c.onDisconnected = onDisconnected
+	if c.onConnected == nil {
+		c.onConnected = func(*Client) {}
+	}
+	if c.onReceived == nil {
+		c.onReceived = func(*Client, []byte) {}
+	}
+	if c.onDisconnected == nil {
+		c.onDisconnected = func(*Client) {}
+	}
+
 	c.onConnectedCalled = false
 	go c.thWork()
 	return &c
@@ -113,10 +136,10 @@ func (c *Client) Stop() error {
 		c.conn = nil
 	}
 
-	isOnReceivedRunning := c.isOnReceivedRunning
+	//isOnReceivedRunning := c.isOnReceivedRunning
 	c.mtx.Unlock()
 
-	if !isOnReceivedRunning {
+	/*if !isOnReceivedRunning {
 		for {
 			c.mtx.Lock()
 			started := c.started
@@ -126,7 +149,7 @@ func (c *Client) Stop() error {
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-	}
+	}*/
 
 	return nil
 }
@@ -164,6 +187,7 @@ func (c *Client) checkConnection() *net.TCPConn {
 	if err != nil {
 		c.mtx.Lock()
 		c.isDialing = false
+		fmt.Println("Error connection")
 		c.mtx.Unlock()
 		return nil
 	}
@@ -225,7 +249,7 @@ func (c *Client) thWork() {
 		}
 
 		c.mtx.Lock()
-		onConnected := c.OnConnected
+		onConnected := c.onConnected
 		needCallOnConnected := !c.onConnectedCalled
 		c.onConnectedCalled = true
 		c.mtx.Unlock()
@@ -238,7 +262,7 @@ func (c *Client) thWork() {
 			conn.Close()
 			c.mtx.Lock()
 			c.conn = nil
-			onDisconnected := c.OnDisconnected
+			onDisconnected := c.onDisconnected
 			c.mtx.Unlock()
 			if onDisconnected != nil {
 				onDisconnected(c)
@@ -248,18 +272,15 @@ func (c *Client) thWork() {
 		receviedData := make([]byte, n)
 		copy(receviedData, buffer[:n])
 
-		c.mtx.Lock()
-		onReceived := c.OnReceived
+		/*c.mtx.Lock()
 		c.isOnReceivedRunning = true
-		c.mtx.Unlock()
+		c.mtx.Unlock()*/
 
-		if onReceived != nil {
-			onReceived(c, receviedData)
-		}
+		c.onReceived(c, receviedData)
 
-		c.mtx.Lock()
+		/*c.mtx.Lock()
 		c.isOnReceivedRunning = false
-		c.mtx.Unlock()
+		c.mtx.Unlock()*/
 	}
 	c.mtx.Lock()
 	c.started = false

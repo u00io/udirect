@@ -36,11 +36,8 @@ func NewServer() *Server {
 }
 
 func (c *Server) Start(port int) error {
-	c.tcpServer = tcpconn.NewServer()
-	c.tcpServer.OnConnected = c.onTcpConnected
-	c.tcpServer.OnReceived = c.onTcpReceived
-	c.tcpServer.OnDisconnected = c.onTcpDisconnected
-	err := c.tcpServer.Start(port)
+	c.tcpServer = tcpconn.NewServer(port, c.onTcpConnected, c.onTcpReceived, c.onTcpDisconnected)
+	err := c.tcpServer.Start()
 	return err
 }
 
@@ -88,8 +85,9 @@ func (c *Server) onTcpConnected(client *tcpconn.Client) {
 }
 
 func (c *Server) onTcpReceived(client *tcpconn.Client, data []byte) {
+	id := client.ID()
 	c.mtx.Lock()
-	udirectClient, ok := c.clients[client.ID()]
+	udirectClient, ok := c.clients[id]
 	c.mtx.Unlock()
 	if ok && udirectClient != nil {
 		udirectClient.onTcpClientReceived(client, data)
@@ -97,14 +95,15 @@ func (c *Server) onTcpReceived(client *tcpconn.Client, data []byte) {
 }
 
 func (c *Server) onTcpDisconnected(client *tcpconn.Client) {
+	id := client.ID()
 	c.mtx.Lock()
-	udirectClient, ok := c.clients[client.ID()]
+	udirectClient, ok := c.clients[id]
 	c.mtx.Unlock()
 	if ok && udirectClient != nil {
 		udirectClient.onTcpClientDisconnected(client)
 	}
 	c.mtx.Lock()
-	delete(c.clients, client.ID())
+	delete(c.clients, id)
 	c.mtx.Unlock()
 }
 

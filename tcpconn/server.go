@@ -22,9 +22,9 @@ type Server struct {
 	bufferSize int
 
 	// callbacks
-	OnConnected    func(*Client)
-	OnReceived     func(*Client, []byte)
-	OnDisconnected func(*Client)
+	onConnected    func(*Client)
+	onReceived     func(*Client, []byte)
+	onDisconnected func(*Client)
 }
 
 var (
@@ -32,16 +32,30 @@ var (
 	ErrorNotStarted     = errors.New("server not started")
 )
 
-func NewServer() *Server {
+func NewServer(port int, onConnected func(*Client), onReceived func(*Client, []byte), onDisconnected func(*Client)) *Server {
 	var c Server
+	c.port = port
 	c.clients = make(map[int64]*Client)
 	c.bufferSize = 64 * 1024
+	c.onConnected = onConnected
+	c.onReceived = onReceived
+	c.onDisconnected = onDisconnected
+	if c.onConnected == nil {
+		c.onConnected = func(*Client) {}
+	}
+	if c.onReceived == nil {
+		c.onReceived = func(*Client, []byte) {}
+	}
+	if c.onDisconnected == nil {
+		c.onDisconnected = func(*Client) {}
+	}
 	return &c
 }
 
-func (c *Server) Start(port int) error {
+func (c *Server) Start() error {
 	c.mtx.Lock()
 	started := c.started
+	port := c.port
 	c.mtx.Unlock()
 	if started {
 		return ErrorAlreadyStarted
@@ -179,7 +193,7 @@ func (c *Server) thAccept() {
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
-		client := newConnectedClient(conn, c.onClientConnected, c.onClientReceived, c.onClientDisconnected)
+		client := newConnectedClient(conn, c.onConnected, c.onReceived, c.onDisconnected)
 		client.SetBufferSize(c.bufferSize)
 		c.mtx.Lock()
 		c.clients[client.id] = client
@@ -191,29 +205,14 @@ func (c *Server) thAccept() {
 	c.mtx.Unlock()
 }
 
-func (c *Server) onClientConnected(client *Client) {
-	c.mtx.Lock()
-	onConnected := c.OnConnected
-	c.mtx.Unlock()
-	if onConnected != nil {
-		onConnected(client)
-	}
+/*func (c *Server) onClientConnected(client *Client) {
+	c.onConnected(client)
 }
 
 func (c *Server) onClientReceived(client *Client, data []byte) {
-	c.mtx.Lock()
-	onReceived := c.OnReceived
-	c.mtx.Unlock()
-	if onReceived != nil {
-		onReceived(client, data)
-	}
+	c.onReceived(client, data)
 }
 
 func (c *Server) onClientDisconnected(client *Client) {
-	c.mtx.Lock()
-	onDisconnected := c.OnDisconnected
-	c.mtx.Unlock()
-	if onDisconnected != nil {
-		onDisconnected(client)
-	}
-}
+	c.onDisconnected(client)
+}*/

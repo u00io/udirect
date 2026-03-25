@@ -55,10 +55,7 @@ func NewClient(addr string, port int) *Client {
 	c.port = port
 	c.maxInputBufferSize = defaultMaxInputBufferSize
 	c.GenerateLocalPrivateKey()
-	c.tcpClient = tcpconn.NewClient()
-	c.tcpClient.OnConnected = c.onTcpClientConnected
-	c.tcpClient.OnDisconnected = c.onTcpClientDisconnected
-	c.tcpClient.OnReceived = c.onTcpClientReceived
+	c.tcpClient = tcpconn.NewClient(c.onTcpClientConnected, c.onTcpClientReceived, c.onTcpClientDisconnected)
 	c.currentLocalNonce = make([]byte, 8)
 	rand.Read(c.currentLocalNonce)
 	return &c

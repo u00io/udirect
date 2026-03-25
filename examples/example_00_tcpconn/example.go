@@ -21,13 +21,7 @@ var data1 = make([]byte, 100*1024*1024)
 var data2 = make([]byte, 100*1024*1024)
 
 func client() {
-	c := tcpconn.NewClient()
-	c.OnConnected = func(client *tcpconn.Client) {
-	}
-	c.OnReceived = func(client *tcpconn.Client, data []byte) {
-	}
-	c.OnDisconnected = func(client *tcpconn.Client) {
-	}
+	c := tcpconn.NewClient(nil, nil, nil)
 	c.Start("127.0.0.1", 8452)
 	for {
 		// time.Sleep(1 * time.Millisecond)
@@ -39,10 +33,8 @@ func client() {
 }
 
 func server() {
-	srv := tcpconn.NewServer()
-	srv.OnConnected = func(client *tcpconn.Client) {
-	}
-	srv.OnReceived = func(client *tcpconn.Client, data []byte) {
+	srv := tcpconn.NewServer(8452, func(client *tcpconn.Client) {
+	}, func(client *tcpconn.Client, data []byte) {
 		mtx.Lock()
 		srvStat.TotalReceived += int64(len(data))
 		srvStat.TotalSent += int64(len(data))
@@ -51,10 +43,9 @@ func server() {
 		if err != nil {
 			fmt.Println("Error sending data:", err)
 		}
-	}
-	srv.OnDisconnected = func(client *tcpconn.Client) {
-	}
-	srv.Start(8452)
+	}, func(client *tcpconn.Client) {
+	})
+	srv.Start()
 	for {
 		time.Sleep(10 * time.Millisecond)
 	}

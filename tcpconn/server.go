@@ -204,15 +204,3 @@ func (c *Server) thAccept() {
 	c.startedThAccept = false
 	c.mtx.Unlock()
 }
-
-/*func (c *Server) onClientConnected(client *Client) {
-	c.onConnected(client)
-}
-
-func (c *Server) onClientReceived(client *Client, data []byte) {
-	c.onReceived(client, data)
-}
-
-func (c *Server) onClientDisconnected(client *Client) {
-	c.onDisconnected(client)
-}*/

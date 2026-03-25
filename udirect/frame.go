@@ -40,6 +40,17 @@ func (c *frame) toBytes() []byte {
 	return buf
 }
 
+func (c *frame) toBytesInBuffer(buf []byte) int {
+	size := 4 + 1 + 3 + len(c.Payload)
+	if len(buf) < size {
+		return 0
+	}
+	binary.LittleEndian.PutUint32(buf[0:4], uint32(size))
+	buf[4] = c.Type
+	copy(buf[8:], c.Payload)
+	return size
+}
+
 func frameFromBytes(data []byte) (*frame, error) {
 	if len(data) < 8 {
 		return nil, ErrInvalidFrame

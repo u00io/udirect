@@ -269,18 +269,9 @@ func (c *Client) thWork() {
 			}
 			continue
 		}
-		receviedData := make([]byte, n)
-		copy(receviedData, buffer[:n])
 
-		/*c.mtx.Lock()
-		c.isOnReceivedRunning = true
-		c.mtx.Unlock()*/
-
+		receviedData := buffer[:n]
 		c.onReceived(c, receviedData)
-
-		/*c.mtx.Lock()
-		c.isOnReceivedRunning = false
-		c.mtx.Unlock()*/
 	}
 	c.mtx.Lock()
 	c.started = false

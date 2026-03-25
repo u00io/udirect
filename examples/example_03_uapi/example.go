@@ -29,10 +29,10 @@ func runClient(addr string) {
 		resp, err := client.Call("ping", form)
 		_ = resp
 		if err == nil {
-			respStr := resp.GetFieldString("message")
-			if respStr != "pong" {
+			//respStr := resp.GetFieldString("message")
+			/*if respStr != "pong" {
 				fmt.Println("Unexpected response:", respStr)
-			}
+			}*/
 			mtx.Lock()
 			srvStat.ClientsSent++
 			mtx.Unlock()
@@ -48,7 +48,7 @@ type Processor struct {
 
 func (p *Processor) Process(form *forms.Form) (*forms.Form, error) {
 	resp := forms.NewForm()
-	resp.SetFieldString("message", "pong")
+	//resp.SetFieldString("message", "pong")
 	return resp, nil
 }
 
@@ -63,20 +63,9 @@ func runServer() {
 
 func Run(server bool, addr string) {
 	go runServer()
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
-	go runClient(addr)
+	for i := 0; i < 10; i++ {
+		go runClient(addr)
+	}
 
 	lastSrvTotalReceived := srvStat.ServerProcessed
 	lastSrvTotalSent := srvStat.ClientsSent

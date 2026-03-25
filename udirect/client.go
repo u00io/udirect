@@ -53,8 +53,8 @@ type ClientStats struct {
 }
 
 const (
-	maxFrameSize              = 64 * 1024      // 64KB
-	defaultMaxInputBufferSize = 10 * 64 * 1024 // 1MB
+	maxFrameSize              = 1024 * 1024       // 1MB
+	defaultMaxInputBufferSize = 10 * maxFrameSize // 10 frames
 )
 
 func NewClient(addr string, port int) *Client {

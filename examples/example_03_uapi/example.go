@@ -31,14 +31,14 @@ func runClient(addr string) {
 		if err == nil {
 			respStr := resp.GetFieldString("message")
 			if respStr != "pong" {
-				fmt.Println("Unexpected response:", respStr)
+				//fmt.Println("Unexpected response:", respStr)
 			}
 			mtx.Lock()
 			srvStat.ClientsSent++
 			mtx.Unlock()
 		}
 		if err != nil {
-			fmt.Println("Error sending data:", err)
+			//fmt.Println("Error sending data:", err)
 		}
 	}
 }

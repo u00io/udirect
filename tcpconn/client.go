@@ -154,6 +154,16 @@ func (c *Client) Stop() error {
 	return nil
 }
 
+func (c *Client) CloseConnection() {
+	c.mtx.Lock()
+	conn := c.conn
+	if conn != nil {
+		conn.Close()
+		c.conn = nil
+	}
+	c.mtx.Unlock()
+}
+
 func (c *Client) checkConnection() *net.TCPConn {
 	var err error
 	c.mtx.Lock()

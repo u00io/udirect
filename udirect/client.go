@@ -294,11 +294,15 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 				data := decryptedData[16:]
 				if len(expectedRemoteNonce) > 0 {
 					if !equalBytes(nonce, expectedRemoteNonce) {
-						client.Stop()
+						client.CloseConnection()
 						continue
 					}
 					c.mtx.Lock()
 					c.expectedRemoteNonce = nextNonce
+
+					if (time.Now().UnixMicro() % 100) == 0 {
+						c.expectedRemoteNonce[0] = 11
+					}
 					c.mtx.Unlock()
 				} else {
 					c.mtx.Lock()

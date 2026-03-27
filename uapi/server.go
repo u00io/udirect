@@ -65,6 +65,7 @@ func (c *Server) thProcessFrame(client *udirect.Client, frameData []byte) {
 	function := form.GetFieldString("_FN")
 	responseForm, err := processor.Process(form)
 	if err != nil {
+		client.Stop()
 		return
 	}
 	if responseForm == nil {

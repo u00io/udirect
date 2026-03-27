@@ -8,8 +8,6 @@ import (
 )
 
 func main() {
-	example03uapi.Run(true, "127.0.0.1")
-
 	// args: --server or --client:x.x.x.x
 	if len(os.Args) > 1 && os.Args[1] == "--server" {
 		example03uapi.Run(true, "")

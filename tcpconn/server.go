@@ -2,6 +2,7 @@ package tcpconn
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -193,6 +194,7 @@ func (c *Server) thAccept() {
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
+		fmt.Println("TCP Server accepted new connection from", conn.RemoteAddr().String())
 		client := newConnectedClient(conn, c.onConnected, c.onReceived, c.onDisconnected)
 		client.SetBufferSize(c.bufferSize)
 		c.mtx.Lock()

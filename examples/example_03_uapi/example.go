@@ -26,29 +26,35 @@ func runClient(addr string) {
 	form := forms.NewForm()
 
 	for {
+		fmt.Println("Call ping")
 		resp, err := client.Call("ping", form)
-		_ = resp
 		if err == nil {
 			respStr := resp.GetFieldString("message")
-			if respStr != "pong" {
-				//fmt.Println("Unexpected response:", respStr)
-			}
+			fmt.Println("			Response:", respStr)
 			mtx.Lock()
 			srvStat.ClientsSent++
 			mtx.Unlock()
 		}
 		if err != nil {
-			//fmt.Println("Error sending data:", err)
+			fmt.Println("Error calling ping:", err)
 		}
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
 type Processor struct {
 }
 
+var counter int
+
 func (p *Processor) Process(form *forms.Form) (*forms.Form, error) {
 	resp := forms.NewForm()
 	resp.SetFieldString("message", "pong")
+	fmt.Println("			Received ping, sending pong")
+	counter++
+	if counter%10 == 0 {
+		return nil, fmt.Errorf("simulated error")
+	}
 	return resp, nil
 }
 
@@ -62,8 +68,9 @@ func runServer() {
 }
 
 func Run(server bool, addr string) {
-	go runServer()
-	for i := 0; i < 32; i++ {
+	if server {
+		go runServer()
+	} else {
 		go runClient(addr)
 	}
 
@@ -83,7 +90,10 @@ func Run(server bool, addr string) {
 		clientSpeed := int64(float64(clientSent) / time.Since(dtLastSrvStat).Seconds())
 		dtLastSrvStat = time.Now()
 
-		fmt.Println("SERVER", serverSpeed, "CLIENTS", clientSpeed)
+		_ = serverSpeed
+		_ = clientSpeed
+
+		//fmt.Println("SERVER", serverSpeed, "CLIENTS", clientSpeed)
 		mtx.Unlock()
 	}
 }

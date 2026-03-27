@@ -136,6 +136,15 @@ func (c *Client) ID() int64 {
 func (c *Client) onTcpClientConnected(client *tcpconn.Client) {
 	var err error
 
+	c.aesKey = make([]byte, 32)
+	c.aesKeyIsValid = false
+	c.transportPrivateKey = nil
+	c.transportPublicKey = nil
+	c.remotePublicKey = nil
+	c.transportRemotePublicKey = nil
+	c.inputDataOffset = 0
+	c.expectedRemoteNonce = nil
+
 	c.mtx.Lock()
 	c.transportPrivateKey, c.transportPublicKey, err = GenerateCurve25519KeyPair()
 	if err != nil {
@@ -165,6 +174,7 @@ func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
 	c.remotePublicKey = nil
 	c.transportRemotePublicKey = nil
 	c.inputDataOffset = 0
+	c.expectedRemoteNonce = nil
 	onDisconnected := c.OnDisconnected
 	c.mtx.Unlock()
 	if onDisconnected != nil {
@@ -173,6 +183,7 @@ func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
 }
 
 func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
+	fmt.Println("UDIRECT Received raw data of length:", len(data))
 	c.mtx.Lock()
 	if c.inputDataOffset+len(data) > c.maxInputBufferSize {
 		c.mtx.Unlock()
@@ -266,7 +277,7 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 				c.aesKeyIsValid = true
 				onConnected := c.OnConnected
 				c.mtx.Unlock()
-				fmt.Println("Handshake successful, AES key derived:", hex.EncodeToString(c.aesKey))
+				fmt.Println(c.String(), "Handshake successful, AES key derived:", hex.EncodeToString(c.aesKey))
 				if onConnected != nil {
 					onConnected(c)
 				}
@@ -285,6 +296,7 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 
 			decryptedData, err := decryptAESGCM(frame.Payload, c.aesKey)
 			if err != nil {
+				fmt.Println(c.String(), "Error decrypting data:", err, "with AES key:", hex.EncodeToString(c.aesKey))
 				continue
 			}
 
@@ -294,15 +306,12 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 				data := decryptedData[16:]
 				if len(expectedRemoteNonce) > 0 {
 					if !equalBytes(nonce, expectedRemoteNonce) {
+						fmt.Println("Nonce mismatch, possible replay attack. Expected:", hex.EncodeToString(expectedRemoteNonce), "Received:", hex.EncodeToString(nonce))
 						client.CloseConnection()
 						continue
 					}
 					c.mtx.Lock()
 					c.expectedRemoteNonce = nextNonce
-
-					if (time.Now().UnixMicro() % 100) == 0 {
-						c.expectedRemoteNonce[0] = 11
-					}
 					c.mtx.Unlock()
 				} else {
 					c.mtx.Lock()
@@ -366,6 +375,11 @@ func (c *Client) Send(data []byte) error {
 	frame.Payload = encryptedPayload
 	sendBuffer2FrameLen := frame.toBytesInBuffer(c.sendBuffer2)
 	err = c.tcpClient.Send(c.sendBuffer2[0:sendBuffer2FrameLen])
+	fmt.Println("UDIRECT Sent encrypted with AES key:", hex.EncodeToString(c.aesKey), "payload length:", len(encryptedPayload))
 	c.mtxSend.Unlock()
 	return err
+}
+
+func (c *Client) String() string {
+	return "CL_" + fmt.Sprint(c.ID())
 }

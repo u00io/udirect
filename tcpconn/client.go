@@ -197,11 +197,9 @@ func (c *Client) checkConnection() *net.TCPConn {
 	if err != nil {
 		c.mtx.Lock()
 		c.isDialing = false
-		fmt.Println("Error connection")
 		c.mtx.Unlock()
 		return nil
 	}
-	fmt.Println("TCP Client connected to", conn.RemoteAddr().String())
 	c.mtx.Lock()
 	c.onConnectedCalled = false
 	c.conn = conn

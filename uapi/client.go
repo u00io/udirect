@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -47,13 +46,11 @@ func (c *Client) generateTrId() string {
 func (c *Client) onFrameReceived(client *udirect.Client, frameData []byte) {
 	form, err := forms.ParseForm(frameData)
 	if err != nil {
-		fmt.Println("Error parsing form:", err)
 		return
 	}
 
 	trId := form.GetFieldString("_TRID")
 	if trId == "" {
-		fmt.Println("Received form without _TRID")
 		return
 	}
 
@@ -61,7 +58,6 @@ func (c *Client) onFrameReceived(client *udirect.Client, frameData []byte) {
 	ch, ok := c.pendingCalls[trId]
 	c.mtx.Unlock()
 	if !ok {
-		fmt.Println("No pending call for _TRID:", trId)
 		return
 	}
 
@@ -92,10 +88,8 @@ func (c *Client) Call(function string, form *forms.Form) (*forms.Form, error) {
 	form.SetFieldString("_FN", function)
 	form.SetFieldString("_TRID", trId)
 
-	fmt.Println("Sending call with _TRID:", trId)
 	err := c.udirectClient.Send(form.Serialize())
 	if err != nil {
-		fmt.Println("Error sending data:", err)
 		return nil, err
 	}
 

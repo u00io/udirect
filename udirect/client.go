@@ -136,6 +136,8 @@ func (c *Client) ID() int64 {
 func (c *Client) onTcpClientConnected(client *tcpconn.Client) {
 	var err error
 
+	fmt.Printf("TCP client connected: %s:%d\n", c.addr, c.port)
+
 	c.aesKey = make([]byte, 32)
 	c.aesKeyIsValid = false
 	c.transportPrivateKey = nil
@@ -166,6 +168,9 @@ func (c *Client) onTcpClientConnected(client *tcpconn.Client) {
 }
 
 func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
+
+	fmt.Printf("TCP client disconnected: %s:%d\n", c.addr, c.port)
+
 	c.mtx.Lock()
 	c.aesKey = make([]byte, 32)
 	c.aesKeyIsValid = false
@@ -183,6 +188,8 @@ func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
 }
 
 func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
+	fmt.Printf("TCP client received data: %d bytes from %s:%d\n", len(data), c.addr, c.port)
+
 	c.mtx.Lock()
 	if c.inputDataOffset+len(data) > c.maxInputBufferSize {
 		c.mtx.Unlock()
@@ -279,6 +286,8 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 				if onConnected != nil {
 					onConnected(c)
 				}
+
+				fmt.Printf("Handshake completed with %s:%d, AES key derived\n", c.addr, c.port)
 			}
 		case 1: // encrypted data
 			c.mtx.Lock()

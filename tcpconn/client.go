@@ -195,11 +195,13 @@ func (c *Client) checkConnection() *net.TCPConn {
 
 	conn, err = net.DialTCP("tcp", nil, tcpAddr)
 	if err != nil {
+		fmt.Printf("Failed to connect to %s:%d: %v\n", c.host, c.port, err)
 		c.mtx.Lock()
 		c.isDialing = false
 		c.mtx.Unlock()
 		return nil
 	}
+	fmt.Printf("Connected to %s:%d\n", c.host, c.port)
 	c.mtx.Lock()
 	c.onConnectedCalled = false
 	c.conn = conn

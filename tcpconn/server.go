@@ -2,6 +2,7 @@ package tcpconn
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -75,6 +76,7 @@ func (c *Server) Start() error {
 	c.mtx.Unlock()
 	go c.thCleanupClients()
 	go c.thAccept()
+	fmt.Println("TCPCONN SERVER", "ConnectedClient")
 	return nil
 }
 

@@ -220,7 +220,8 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 	receivedFrames := make([]*frame, 0)
 	offset := 0
 	for {
-		if c.inputDataOffset-offset < 4 {
+		restDataLength := c.inputDataOffset - offset
+		if restDataLength < 4 {
 			break
 		}
 		frameLength = binary.LittleEndian.Uint32(c.inputData[offset : offset+4])
@@ -234,7 +235,7 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 			client.Stop()
 			return
 		}
-		if uint32(c.inputDataOffset) < frameLength {
+		if uint32(restDataLength) < frameLength {
 			break
 		}
 
@@ -250,7 +251,13 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 	if offset < c.inputDataOffset {
 		copy(c.inputData[0:], c.inputData[offset:c.inputDataOffset])
 	}
+	if offset > c.inputDataOffset {
+		c.inputDataOffset = c.inputDataOffset
+	}
 	c.inputDataOffset -= offset
+	if c.inputDataOffset < 0 {
+		c.inputDataOffset = 0
+	}
 	c.mtx.Unlock()
 
 	for _, frame := range receivedFrames {

@@ -251,13 +251,7 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 	if offset < c.inputDataOffset {
 		copy(c.inputData[0:], c.inputData[offset:c.inputDataOffset])
 	}
-	if offset > c.inputDataOffset {
-		c.inputDataOffset = c.inputDataOffset
-	}
 	c.inputDataOffset -= offset
-	if c.inputDataOffset < 0 {
-		c.inputDataOffset = 0
-	}
 	c.mtx.Unlock()
 
 	for _, frame := range receivedFrames {

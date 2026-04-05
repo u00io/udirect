@@ -278,6 +278,9 @@ func (c *Client) thWork() {
 			if onDisconnected != nil {
 				onDisconnected(c)
 			}
+			if !c.autoreconnect {
+				c.Stop()
+			}
 			continue
 		}
 

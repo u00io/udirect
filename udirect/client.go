@@ -188,7 +188,7 @@ func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
 }
 
 func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
-	fmt.Printf("TCP client received data: %d bytes from %s:%d\n", len(data), c.addr, c.port)
+	// fmt.Printf("TCP client received data: %d bytes from %s:%d\n", len(data), c.addr, c.port)
 
 	c.mtx.Lock()
 	if c.inputDataOffset+len(data) > c.maxInputBufferSize {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -153,7 +154,7 @@ func (c *Server) thCleanupClients() {
 		c.mtx.Unlock()
 
 		for _, client := range clients {
-			if client.Conn() != nil {
+			if client.Conn() == nil {
 				clientToRemove = append(clientToRemove, client)
 			}
 		}
@@ -165,6 +166,7 @@ func (c *Server) thCleanupClients() {
 		c.mtx.Unlock()
 
 		time.Sleep(100 * time.Millisecond)
+		runtime.GC()
 	}
 
 	c.mtx.Lock()

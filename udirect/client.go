@@ -136,7 +136,7 @@ func (c *Client) ID() int64 {
 func (c *Client) onTcpClientConnected(client *tcpconn.Client) {
 	var err error
 
-	fmt.Printf("TCP client connected: %s:%d\n", c.addr, c.port)
+	// fmt.Printf("TCP client connected: %s:%d\n", c.addr, c.port)
 
 	c.aesKey = make([]byte, 32)
 	c.aesKeyIsValid = false
@@ -169,7 +169,7 @@ func (c *Client) onTcpClientConnected(client *tcpconn.Client) {
 
 func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
 
-	fmt.Printf("TCP client disconnected: %s:%d\n", c.addr, c.port)
+	// fmt.Printf("TCP client disconnected: %s:%d\n", c.addr, c.port)
 
 	c.mtx.Lock()
 	c.aesKey = make([]byte, 32)

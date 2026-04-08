@@ -7,6 +7,7 @@ import (
 
 	"github.com/u00io/udirect/forms"
 	"github.com/u00io/udirect/uapi"
+	"github.com/u00io/udirect/udirect"
 )
 
 var dataToSend = make([]byte, 1*1024)
@@ -20,7 +21,7 @@ var mtx sync.Mutex
 var srvStat Stat
 
 func runClient(addr string) {
-	client := uapi.NewClient(addr, 13245)
+	client := uapi.NewClient(addr, 13245, "")
 	client.Start()
 
 	form := forms.NewForm()
@@ -47,10 +48,10 @@ type Processor struct {
 
 var counter int
 
-func (p *Processor) Process(form *forms.Form) (*forms.Form, error) {
+func (p *Processor) Process(client *udirect.Client, form *forms.Form) (*forms.Form, error) {
 	resp := forms.NewForm()
 	resp.SetFieldString("message", "pong")
-	fmt.Println("			Received ping, sending pong")
+	fmt.Println("			Received ping from", client.RemoteAddress(), "sending pong")
 	counter++
 	if counter%10 == 0 {
 		return nil, fmt.Errorf("simulated error")
@@ -59,7 +60,7 @@ func (p *Processor) Process(form *forms.Form) (*forms.Form, error) {
 }
 
 func runServer() {
-	srv := uapi.NewServer()
+	srv := uapi.NewServer("")
 	srv.SetProcessor(&Processor{})
 	srv.Start(13245)
 	for {

@@ -27,11 +27,15 @@ type Server struct {
 	OnDisconnected  func(*Client)
 }
 
-func NewServer() *Server {
+func NewServer(privateKeyHex string) *Server {
 	var c Server
 	c.clients = make(map[int64]*Client)
 	c.maxInputBufferSize = defaultMaxInputBufferSize
-	c.GenerateLocalPrivateKey()
+	if privateKeyHex != "" {
+		c.SetLocalPrivateKey(privateKeyHex)
+	} else {
+		c.GenerateLocalPrivateKey()
+	}
 	return &c
 }
 

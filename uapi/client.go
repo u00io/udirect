@@ -21,9 +21,9 @@ var (
 	ErrCallTimeout = errors.New("call timeout")
 )
 
-func NewClient(addr string, port int) *Client {
+func NewClient(addr string, port int, privateKeyHex string) *Client {
 	var c Client
-	c.udirectClient = udirect.NewClient(addr, port)
+	c.udirectClient = udirect.NewClient(addr, port, privateKeyHex)
 	c.udirectClient.OnFrameReceived = c.onFrameReceived
 	c.pendingCalls = make(map[string]chan *forms.Form)
 	return &c
@@ -65,6 +65,10 @@ func (c *Client) onFrameReceived(client *udirect.Client, frameData []byte) {
 	case ch <- form:
 	default:
 	}
+}
+
+func (c *Client) RemotePublicKey() string {
+	return c.udirectClient.RemotePublicKey()
 }
 
 func (c *Client) Call(function string, form *forms.Form) (*forms.Form, error) {

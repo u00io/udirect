@@ -19,7 +19,7 @@ var mtx sync.Mutex
 var srvStat Stat
 
 func runClient(addr string) {
-	client := udirect.NewClient(addr, 13245)
+	client := udirect.NewClient(addr, 13245, "")
 	client.SetMaxInputBufferSize(1 * 1024 * 1024)
 	client.OnConnected = func(client *udirect.Client) {
 	}
@@ -41,7 +41,7 @@ func runClient(addr string) {
 }
 
 func runServer() {
-	srv := udirect.NewServer()
+	srv := udirect.NewServer("")
 	srv.SetMaxInputBufferSize(100 * 1024)
 	srv.OnConnected = func(client *udirect.Client) {
 	}

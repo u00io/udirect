@@ -18,14 +18,14 @@ func init() {
 	}
 }
 
-func GetClient(addr string, port int) *Client {
+func GetClient(addr string, port int, privateKeyHex string) *Client {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
-	key := addr + ":" + strconv.Itoa(port)
+	key := addr + ":" + strconv.Itoa(port) + ":" + privateKeyHex
 	if client, exists := pool.clients[key]; exists {
 		return client
 	}
-	client := NewClient(addr, port)
+	client := NewClient(addr, port, privateKeyHex)
 	client.Start()
 	pool.clients[key] = client
 	return client

@@ -81,6 +81,16 @@ func newConnectedClient(conn *net.TCPConn, onConnected func(*Client), onReceived
 	return &c
 }
 
+func (c *Client) RemoteAddress() string {
+	c.mtx.Lock()
+	conn := c.conn
+	c.mtx.Unlock()
+	if conn != nil {
+		return conn.RemoteAddr().String()
+	}
+	return ""
+}
+
 func (c *Client) SetBufferSize(size int) {
 	c.mtx.Lock()
 	c.bufferSize = size

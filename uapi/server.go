@@ -8,7 +8,7 @@ import (
 )
 
 type IProcessor interface {
-	Process(form *forms.Form) (*forms.Form, error)
+	Process(client *udirect.Client, form *forms.Form) (*forms.Form, error)
 }
 
 type Server struct {
@@ -17,9 +17,9 @@ type Server struct {
 	processor     IProcessor
 }
 
-func NewServer() *Server {
+func NewServer(privateKeyHex string) *Server {
 	var c Server
-	c.udirectServer = udirect.NewServer()
+	c.udirectServer = udirect.NewServer(privateKeyHex)
 	c.udirectServer.OnFrameReceived = c.OnFrameReceived
 	return &c
 }
@@ -63,7 +63,7 @@ func (c *Server) thProcessFrame(client *udirect.Client, frameData []byte) {
 
 	trId := form.GetFieldString("_TRID")
 	function := form.GetFieldString("_FN")
-	responseForm, err := processor.Process(form)
+	responseForm, err := processor.Process(client, form)
 	if err != nil {
 		client.Stop()
 		return

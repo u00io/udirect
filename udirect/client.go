@@ -57,12 +57,16 @@ const (
 	defaultMaxInputBufferSize = 10 * maxFrameSize // 10 frames
 )
 
-func NewClient(addr string, port int) *Client {
+func NewClient(addr string, port int, privateKeyHex string) *Client {
 	var c Client
 	c.addr = addr
 	c.port = port
 	c.maxInputBufferSize = defaultMaxInputBufferSize
-	c.GenerateLocalPrivateKey()
+	if privateKeyHex != "" {
+		c.SetLocalPrivateKey(privateKeyHex)
+	} else {
+		c.GenerateLocalPrivateKey()
+	}
 	c.tcpClient = tcpconn.NewClient(c.onTcpClientConnected, c.onTcpClientReceived, c.onTcpClientDisconnected)
 	c.currentLocalNonce = make([]byte, 8)
 	rand.Read(c.currentLocalNonce)
@@ -89,6 +93,19 @@ func newClientFromTcpClient(tcpClient *tcpconn.Client, onConnected func(*Client)
 	c.sendBuffer2 = make([]byte, defaultMaxInputBufferSize)
 	c.aesKey = make([]byte, 32)
 	return &c
+}
+
+func (c *Client) RemotePublicKey() string {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	if c.remotePublicKey == nil {
+		return ""
+	}
+	return hex.EncodeToString(c.remotePublicKey)
+}
+
+func (c *Client) RemoteAddress() string {
+	return c.tcpClient.RemoteAddress()
 }
 
 func (c *Client) GenerateLocalPrivateKey() error {

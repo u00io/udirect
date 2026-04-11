@@ -2,11 +2,12 @@ package tcpconn
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/u00io/udirect/stats"
 )
 
 type Server struct {
@@ -35,6 +36,7 @@ var (
 )
 
 func NewServer(port int, onConnected func(*Client), onReceived func(*Client, []byte), onDisconnected func(*Client)) *Server {
+	stats.Inc("tcpconn.server_new")
 	var c Server
 	c.port = port
 	c.clients = make(map[int64]*Client)
@@ -55,6 +57,7 @@ func NewServer(port int, onConnected func(*Client), onReceived func(*Client, []b
 }
 
 func (c *Server) Start() error {
+	stats.Inc("tcpconn.server_start")
 	c.mtx.Lock()
 	started := c.started
 	port := c.port
@@ -77,11 +80,11 @@ func (c *Server) Start() error {
 	c.mtx.Unlock()
 	go c.thCleanupClients()
 	go c.thAccept()
-	fmt.Println("TCPCONN SERVER", "ConnectedClient")
 	return nil
 }
 
 func (c *Server) Stop() error {
+	stats.Inc("tcpconn.server_stop")
 	// Check if the server is started
 	c.mtx.Lock()
 	started := c.started
@@ -117,6 +120,7 @@ func (c *Server) Stop() error {
 }
 
 func (c *Server) SetBufferSize(size int) {
+	stats.Inc("tcpconn.server_set_buffer_size")
 	c.mtx.Lock()
 	c.bufferSize = size
 	c.mtx.Unlock()
@@ -132,11 +136,16 @@ func (c *Server) SetBufferSize(size int) {
 }
 
 func (c *Server) thCleanupClients() {
+	stats.Inc("goroutine.tcpconn.server_cleanup_clients")
+	defer stats.Dec("goroutine.tcpconn.server_cleanup_clients")
+
+	stats.Inc("tcpconn.server_cleanup_clients")
 	c.mtx.Lock()
 	c.startedThCleanupClients = true
 	c.mtx.Unlock()
 
 	for {
+		stats.Inc("tcpconn.server_cleanup_clients_it")
 		c.mtx.Lock()
 		stopping := c.stopping
 		c.mtx.Unlock()
@@ -162,6 +171,7 @@ func (c *Server) thCleanupClients() {
 		c.mtx.Lock()
 		for _, client := range clientToRemove {
 			delete(c.clients, client.id)
+			stats.Inc("tcpconn.server_cleanup_clients_removed_client")
 		}
 		c.mtx.Unlock()
 
@@ -172,14 +182,20 @@ func (c *Server) thCleanupClients() {
 	c.mtx.Lock()
 	c.startedThCleanupClients = false
 	c.mtx.Unlock()
+	stats.Inc("tcpconn.server_cleanup_clients_stopped")
 }
 
 func (c *Server) thAccept() {
+	stats.Inc("goroutine.tcpconn.server_accept")
+	defer stats.Dec("goroutine.tcpconn.server_accept")
+
+	stats.Inc("tcpconn.server_th_accept")
 	c.mtx.Lock()
 	c.startedThAccept = true
 	c.mtx.Unlock()
 
 	for {
+		stats.Inc("tcpconn.server_th_accept_it")
 		c.mtx.Lock()
 		listener := c.listener
 		stopping := c.stopping
@@ -197,6 +213,7 @@ func (c *Server) thAccept() {
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
+		stats.Inc("tcpconn.server_th_accept_it_accepted")
 		client := newConnectedClient(conn, c.onConnected, c.onReceived, c.onDisconnected)
 		client.SetBufferSize(c.bufferSize)
 		c.mtx.Lock()
@@ -207,4 +224,6 @@ func (c *Server) thAccept() {
 	c.mtx.Lock()
 	c.startedThAccept = false
 	c.mtx.Unlock()
+
+	stats.Inc("tcpconn.server_th_accept_stopped")
 }

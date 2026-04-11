@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/u00io/udirect/stats"
 	"github.com/u00io/udirect/tcpconn"
 )
 
@@ -28,6 +29,7 @@ type Server struct {
 }
 
 func NewServer(privateKeyHex string) *Server {
+	stats.Inc("udirect.server_new")
 	var c Server
 	c.clients = make(map[int64]*Client)
 	c.maxInputBufferSize = defaultMaxInputBufferSize
@@ -40,12 +42,14 @@ func NewServer(privateKeyHex string) *Server {
 }
 
 func (c *Server) Start(port int) error {
+	stats.Inc("udirect.server_start")
 	c.tcpServer = tcpconn.NewServer(port, c.onTcpConnected, c.onTcpReceived, c.onTcpDisconnected)
 	err := c.tcpServer.Start()
 	return err
 }
 
 func (c *Server) Stop() error {
+	stats.Inc("udirect.server_stop")
 	return c.tcpServer.Stop()
 }
 
@@ -56,6 +60,7 @@ func (c *Server) SetMaxInputBufferSize(size int) {
 }
 
 func (c *Server) GenerateLocalPrivateKey() error {
+	stats.Inc("udirect.server_generate_local_private_key")
 	privateKey, err := GeneratePrivateKey()
 	if err != nil {
 		return err
@@ -66,6 +71,8 @@ func (c *Server) GenerateLocalPrivateKey() error {
 }
 
 func (c *Server) SetLocalPrivateKey(privateKeyHex string) error {
+	stats.Inc("udirect.server_set_local_private_key")
+
 	privateKey, err := hex.DecodeString(privateKeyHex)
 	if err != nil || len(privateKey) != ed25519.PrivateKeySize {
 		return fmt.Errorf("invalid private key hex string")
@@ -79,6 +86,7 @@ func (c *Server) SetLocalPrivateKey(privateKeyHex string) error {
 }
 
 func (c *Server) onTcpConnected(client *tcpconn.Client) {
+	stats.Inc("udirect.server_tcp_connected")
 	udirectClient := newClientFromTcpClient(client, c.OnClientConnected, c.OnClientFrameReceived, c.OnClientDisconnected)
 	udirectClient.SetLocalPrivateKey(c.privateKeyHex)
 	udirectClient.SetMaxInputBufferSize(c.maxInputBufferSize)
@@ -99,6 +107,7 @@ func (c *Server) onTcpReceived(client *tcpconn.Client, data []byte) {
 }
 
 func (c *Server) onTcpDisconnected(client *tcpconn.Client) {
+	stats.Inc("udirect.server_tcp_disconnected")
 	id := client.ID()
 	c.mtx.Lock()
 	udirectClient, ok := c.clients[id]
@@ -112,6 +121,7 @@ func (c *Server) onTcpDisconnected(client *tcpconn.Client) {
 }
 
 func (c *Server) OnClientConnected(client *Client) {
+	stats.Inc("tcpconn.server_on_client_connected")
 	c.mtx.Lock()
 	onConnected := c.OnConnected
 	c.mtx.Unlock()
@@ -130,6 +140,7 @@ func (c *Server) OnClientFrameReceived(client *Client, data []byte) {
 }
 
 func (c *Server) OnClientDisconnected(client *Client) {
+	stats.Inc("tcpconn.server_on_client_disconnected")
 	c.mtx.Lock()
 	onDisconnected := c.OnDisconnected
 	c.mtx.Unlock()

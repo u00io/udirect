@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/u00io/udirect/stats"
 	"github.com/u00io/udirect/tcpconn"
 )
 
@@ -58,6 +59,7 @@ const (
 )
 
 func NewClient(addr string, port int, privateKeyHex string) *Client {
+	stats.Inc("udirect.client_new")
 	var c Client
 	c.addr = addr
 	c.port = port
@@ -79,6 +81,7 @@ func NewClient(addr string, port int, privateKeyHex string) *Client {
 }
 
 func newClientFromTcpClient(tcpClient *tcpconn.Client, onConnected func(*Client), onFrameReceived func(*Client, []byte), onDisconnected func(*Client)) *Client {
+	stats.Inc("udirect.new_client_from_tcp_client")
 	var c Client
 	c.tcpClient = tcpClient
 	c.maxInputBufferSize = defaultMaxInputBufferSize
@@ -109,6 +112,7 @@ func (c *Client) RemoteAddress() string {
 }
 
 func (c *Client) GenerateLocalPrivateKey() error {
+	stats.Inc("udirect.client_generate_local_private_key")
 	privateKey, err := GeneratePrivateKey()
 	if err != nil {
 		return err
@@ -121,6 +125,7 @@ func (c *Client) GenerateLocalPrivateKey() error {
 }
 
 func (c *Client) SetLocalPrivateKey(privateKeyHex string) error {
+	stats.Inc("udirect.client_set_local_private_key")
 	privateKey, err := hex.DecodeString(privateKeyHex)
 	if err != nil || len(privateKey) != ed25519.PrivateKeySize {
 		return fmt.Errorf("invalid private key hex string")
@@ -139,10 +144,12 @@ func (c *Client) SetMaxInputBufferSize(size int) {
 }
 
 func (c *Client) Start() {
+	stats.Inc("udirect.client_start")
 	c.tcpClient.Start(c.addr, c.port)
 }
 
 func (c *Client) Stop() {
+	stats.Inc("udirect.client_stop")
 	c.tcpClient.Stop()
 }
 
@@ -151,6 +158,7 @@ func (c *Client) ID() int64 {
 }
 
 func (c *Client) onTcpClientConnected(client *tcpconn.Client) {
+	stats.Inc("udirect.client_on_tcp_client_connected")
 	var err error
 
 	// fmt.Printf("TCP client connected: %s:%d\n", c.addr, c.port)
@@ -185,6 +193,7 @@ func (c *Client) onTcpClientConnected(client *tcpconn.Client) {
 }
 
 func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
+	stats.Inc("udirect.client_on_tcp_client_disconnected")
 
 	// fmt.Printf("TCP client disconnected: %s:%d\n", c.addr, c.port)
 
@@ -205,8 +214,6 @@ func (c *Client) onTcpClientDisconnected(client *tcpconn.Client) {
 }
 
 func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
-	// fmt.Printf("TCP client received data: %d bytes from %s:%d\n", len(data), c.addr, c.port)
-
 	c.mtx.Lock()
 	if c.inputDataOffset+len(data) > c.maxInputBufferSize {
 		c.mtx.Unlock()
@@ -224,11 +231,13 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 	maxFrameLength := uint32(c.maxInputBufferSize)
 	frameLength := binary.LittleEndian.Uint32(c.inputData[0:4])
 	if frameLength > maxFrameLength {
+		stats.Inc("udirect.client_frame_length_exceeded")
 		c.mtx.Unlock()
 		client.Stop()
 		return
 	}
 	if frameLength < minFrameLength {
+		stats.Inc("udirect.client_frame_length_too_small")
 		c.mtx.Unlock()
 		client.Stop()
 		return
@@ -245,11 +254,13 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 		if frameLength > maxFrameLength {
 			c.mtx.Unlock()
 			client.Stop()
+			stats.Inc("udirect.client_frame_length_exceeded")
 			return
 		}
 		if frameLength < minFrameLength {
 			c.mtx.Unlock()
 			client.Stop()
+			stats.Inc("udirect.client_frame_length_too_small")
 			return
 		}
 		if uint32(restDataLength) < frameLength {
@@ -286,6 +297,7 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 				transportRemotePublicKey := frame.Payload[32:64]
 				signature := frame.Payload[64:128]
 				if !ed25519.Verify(ed25519.PublicKey(remotePublicKey), transportRemotePublicKey, signature) {
+					stats.Inc("udirect.client_handshake_signature_verification_failed")
 					continue
 				}
 				c.mtx.Lock()
@@ -294,6 +306,7 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 				c.mtx.Unlock()
 				aesKey, err := deriveAESKey(c.transportPrivateKey, c.transportRemotePublicKey)
 				if err != nil {
+					stats.Inc("udirect.client_handshake_derive_aes_key_failed")
 					continue
 				}
 				c.mtx.Lock()
@@ -305,7 +318,7 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 					onConnected(c)
 				}
 
-				fmt.Printf("Handshake completed with %s:%d, AES key derived\n", c.addr, c.port)
+				stats.Inc("udirect.client_handshake_completed")
 			}
 		case 1: // encrypted data
 			c.mtx.Lock()
@@ -316,11 +329,13 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 			c.mtx.Unlock()
 
 			if !aesKeyIsValid {
+				stats.Inc("udirect.client_received_data_before_handshake_completed")
 				continue
 			}
 
 			decryptedData, err := decryptAESGCM(frame.Payload, c.aesKey)
 			if err != nil {
+				stats.Inc("udirect.client_decrypt_failed")
 				continue
 			}
 
@@ -330,6 +345,7 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 				data := decryptedData[16:]
 				if len(expectedRemoteNonce) > 0 {
 					if !equalBytes(nonce, expectedRemoteNonce) {
+						stats.Inc("udirect.client_nonce_mismatch")
 						client.CloseConnection()
 						continue
 					}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/u00io/udirect/forms"
+	"github.com/u00io/udirect/stats"
 	"github.com/u00io/udirect/udirect"
 )
 
@@ -22,6 +23,7 @@ var (
 )
 
 func NewClient(addr string, port int, privateKeyHex string) *Client {
+	stats.Inc("uapi.client_new")
 	var c Client
 	c.udirectClient = udirect.NewClient(addr, port, privateKeyHex)
 	c.udirectClient.OnFrameReceived = c.onFrameReceived
@@ -30,10 +32,12 @@ func NewClient(addr string, port int, privateKeyHex string) *Client {
 }
 
 func (c *Client) Start() {
+	stats.Inc("uapi.client_start")
 	c.udirectClient.Start()
 }
 
 func (c *Client) Stop() {
+	stats.Inc("uapi.client_stop")
 	c.udirectClient.Stop()
 }
 
@@ -46,11 +50,13 @@ func (c *Client) generateTrId() string {
 func (c *Client) onFrameReceived(client *udirect.Client, frameData []byte) {
 	form, err := forms.ParseForm(frameData)
 	if err != nil {
+		stats.Inc("uapi.client_parse_error")
 		return
 	}
 
 	trId := form.GetFieldString("_TRID")
 	if trId == "" {
+		stats.Inc("uapi.client_no_trid")
 		return
 	}
 
@@ -58,6 +64,7 @@ func (c *Client) onFrameReceived(client *udirect.Client, frameData []byte) {
 	ch, ok := c.pendingCalls[trId]
 	c.mtx.Unlock()
 	if !ok {
+		stats.Inc("uapi.client_no_pending_call")
 		return
 	}
 
@@ -94,14 +101,21 @@ func (c *Client) Call(function string, form *forms.Form) (*forms.Form, error) {
 
 	err := c.udirectClient.Send(form.Serialize())
 	if err != nil {
+		stats.Inc("uapi.client_send_error")
 		return nil, err
 	}
 
 	select {
 	case response := <-responseCh:
-		return response, nil
+		{
+			stats.Inc("uapi.client_call_success")
+			return response, nil
+		}
 	case <-time.After(3 * time.Second):
-		return nil, ErrCallTimeout
+		{
+			stats.Inc("uapi.client_call_timeout")
+			return nil, ErrCallTimeout
+		}
 	}
 
 }

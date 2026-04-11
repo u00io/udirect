@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/u00io/udirect/forms"
+	"github.com/u00io/udirect/stats"
 	"github.com/u00io/udirect/udirect"
 )
 
@@ -18,6 +19,7 @@ type Server struct {
 }
 
 func NewServer(privateKeyHex string) *Server {
+	stats.Inc("uapi.server_new")
 	var c Server
 	c.udirectServer = udirect.NewServer(privateKeyHex)
 	c.udirectServer.OnFrameReceived = c.OnFrameReceived
@@ -31,10 +33,12 @@ func (c *Server) SetProcessor(processor IProcessor) {
 }
 
 func (c *Server) Start(port int) error {
+	stats.Inc("uapi.server_start")
 	return c.udirectServer.Start(port)
 }
 
 func (c *Server) Stop() error {
+	stats.Inc("uapi.server_stop")
 	return c.udirectServer.Stop()
 }
 
@@ -49,6 +53,9 @@ func (c *Server) OnFrameReceived(client *udirect.Client, frameData []byte) {
 }
 
 func (c *Server) thProcessFrame(client *udirect.Client, frameData []byte) {
+	stats.Inc("goroutine.uapi.server_process_frame")
+	defer stats.Dec("goroutine.uapi.server_process_frame")
+
 	form, err := forms.ParseForm(frameData)
 	if err != nil {
 		return
@@ -58,6 +65,7 @@ func (c *Server) thProcessFrame(client *udirect.Client, frameData []byte) {
 	processor := c.processor
 	c.mtx.RUnlock()
 	if processor == nil {
+		stats.Inc("uapi.server_no_processor")
 		return
 	}
 
@@ -65,6 +73,7 @@ func (c *Server) thProcessFrame(client *udirect.Client, frameData []byte) {
 	function := form.GetFieldString("_FN")
 	responseForm, err := processor.Process(client, form)
 	if err != nil {
+		stats.Inc("uapi.server_process_error")
 		client.Stop()
 		return
 	}

@@ -6,6 +6,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/u00io/udirect/stats"
 )
 
 type Client struct {
@@ -37,6 +39,7 @@ var (
 )
 
 func NewClient(onConnected func(*Client), onReceived func(*Client, []byte), onDisconnected func(*Client)) *Client {
+	stats.Inc("tcpconn.client_new")
 	var c Client
 	c.id = getNextClientID()
 	c.bufferSize = 64 * 1024
@@ -56,6 +59,7 @@ func NewClient(onConnected func(*Client), onReceived func(*Client, []byte), onDi
 }
 
 func newConnectedClient(conn *net.TCPConn, onConnected func(*Client), onReceived func(*Client, []byte), onDisconnected func(*Client)) *Client {
+	stats.Inc("tcpconn.new_connected_client")
 	var c Client
 	c.id = getNextClientID()
 	c.conn = conn
@@ -115,6 +119,7 @@ func (c *Client) SetAutoReconnect(enabled bool) {
 }
 
 func (c *Client) Start(addr string, port int) {
+	stats.Inc("tcpconn.client_start")
 	c.mtx.Lock()
 	started := c.started
 	if started {
@@ -130,6 +135,7 @@ func (c *Client) Start(addr string, port int) {
 }
 
 func (c *Client) Stop() error {
+	stats.Inc("tcpconn.client_stop")
 	c.mtx.Lock()
 	started := c.started
 	c.mtx.Unlock()
@@ -165,6 +171,7 @@ func (c *Client) Stop() error {
 }
 
 func (c *Client) CloseConnection() {
+	stats.Inc("tcpconn.client_close_connection")
 	c.mtx.Lock()
 	conn := c.conn
 	if conn != nil {
@@ -197,6 +204,7 @@ func (c *Client) checkConnection() *net.TCPConn {
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", c.host, c.port))
 	if err != nil {
+		stats.Inc("tcpconn.client_check_connection_resolve_failed")
 		c.mtx.Lock()
 		c.isDialing = false
 		c.mtx.Unlock()
@@ -205,13 +213,13 @@ func (c *Client) checkConnection() *net.TCPConn {
 
 	conn, err = net.DialTCP("tcp", nil, tcpAddr)
 	if err != nil {
-		fmt.Printf("Failed to connect to %s:%d: %v\n", c.host, c.port, err)
+		stats.Inc("tcpconn.client_check_connection_dial_failed")
 		c.mtx.Lock()
 		c.isDialing = false
 		c.mtx.Unlock()
 		return nil
 	}
-	fmt.Printf("Connected to %s:%d\n", c.host, c.port)
+	stats.Inc("tcpconn.client_check_connection_dial_success")
 	c.mtx.Lock()
 	c.onConnectedCalled = false
 	c.conn = conn
@@ -246,6 +254,10 @@ func (c *Client) Send(data []byte) error {
 }
 
 func (c *Client) thWork() {
+	stats.Inc("goroutine.tcpconn.client_work")
+	defer stats.Dec("goroutine.tcpconn.client_work")
+
+	stats.Inc("tcpconn.client_th_work")
 	c.mtx.Lock()
 	c.started = true
 	buffer := make([]byte, c.bufferSize)
@@ -280,6 +292,7 @@ func (c *Client) thWork() {
 
 		n, err := conn.Read(buffer)
 		if err != nil {
+			stats.Inc("tcpconn.client_th_work_read_failed")
 			conn.Close()
 			c.mtx.Lock()
 			c.conn = nil
@@ -301,4 +314,5 @@ func (c *Client) thWork() {
 	c.started = false
 	c.stopping = false
 	c.mtx.Unlock()
+	stats.Inc("tcpconn.client_th_work_stopped")
 }

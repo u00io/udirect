@@ -267,6 +267,7 @@ func (c *Client) thWork() {
 		c.mtx.Lock()
 		stopping := c.stopping
 		bufferSize := c.bufferSize
+		autoreconnect := c.autoreconnect
 		c.mtx.Unlock()
 		if stopping {
 			break
@@ -274,6 +275,10 @@ func (c *Client) thWork() {
 		conn := c.checkConnection()
 		if conn == nil {
 			time.Sleep(500 * time.Millisecond)
+			if !autoreconnect {
+				c.Stop()
+				break
+			}
 			continue
 		}
 
@@ -297,12 +302,14 @@ func (c *Client) thWork() {
 			c.mtx.Lock()
 			c.conn = nil
 			onDisconnected := c.onDisconnected
+			autoreconnect := c.autoreconnect
 			c.mtx.Unlock()
 			if onDisconnected != nil {
 				onDisconnected(c)
 			}
-			if !c.autoreconnect {
+			if !autoreconnect {
 				c.Stop()
+				break
 			}
 			continue
 		}

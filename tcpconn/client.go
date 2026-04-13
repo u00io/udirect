@@ -138,6 +138,7 @@ func (c *Client) Stop() error {
 	stats.Inc("tcpconn.client_stop")
 	c.mtx.Lock()
 	started := c.started
+	autoreconnect := c.autoreconnect
 	c.mtx.Unlock()
 	if !started {
 		return ErrorNotConnected
@@ -154,6 +155,10 @@ func (c *Client) Stop() error {
 
 	//isOnReceivedRunning := c.isOnReceivedRunning
 	c.mtx.Unlock()
+
+	if !autoreconnect {
+		c.onDisconnected(c)
+	}
 
 	/*if !isOnReceivedRunning {
 		for {
@@ -301,15 +306,13 @@ func (c *Client) thWork() {
 			conn.Close()
 			c.mtx.Lock()
 			c.conn = nil
-			onDisconnected := c.onDisconnected
 			autoreconnect := c.autoreconnect
 			c.mtx.Unlock()
-			if onDisconnected != nil {
-				onDisconnected(c)
-			}
 			if !autoreconnect {
 				c.Stop()
 				break
+			} else {
+				c.onDisconnected(c)
 			}
 			continue
 		}

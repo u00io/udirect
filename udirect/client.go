@@ -367,6 +367,9 @@ func (c *Client) onTcpClientReceived(client *tcpconn.Client, data []byte) {
 }
 
 func (c *Client) Send(data []byte) error {
+	c.mtxSend.Lock()
+	defer c.mtxSend.Unlock()
+
 	// Payload format:
 	// 0. nonce [8 bytes]
 	// 1. next nonce [8 bytes]
@@ -387,34 +390,28 @@ func (c *Client) Send(data []byte) error {
 		return fmt.Errorf("AES key not derived yet")
 	}
 
-	c.mtxSend.Lock()
 	payloadRaw := c.sendBuffer1
-	c.mtx.Lock()
+
+	// fill nonce and next nonce
 	copy(payloadRaw[0:8], c.currentLocalNonce) // current nonce
 	// fill c.currentLocalNonce with random bytes for next use
 	_, err := rand.Read(c.currentLocalNonce)
 	if err != nil {
-		c.mtx.Unlock()
-		c.mtxSend.Unlock()
 		return err
 	}
 	copy(payloadRaw[8:16], c.currentLocalNonce) // next nonce
-	c.mtx.Unlock()
 
 	copy(payloadRaw[16:], data)
 	encryptedPayload, err := encryptAESGCM(payloadRaw[:16+len(data)], c.aesKey)
-	c.mtxSend.Unlock()
 	if err != nil {
 		return err
 	}
 
-	c.mtxSend.Lock()
 	var frame frame
 	frame.Type = 1
 	frame.Payload = encryptedPayload
 	sendBuffer2FrameLen := frame.toBytesInBuffer(c.sendBuffer2)
 	err = c.tcpClient.Send(c.sendBuffer2[0:sendBuffer2FrameLen])
-	c.mtxSend.Unlock()
 	return err
 }
 
